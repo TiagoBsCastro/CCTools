@@ -23,7 +23,7 @@ def get_n_samples(param_ranges, n_samples):
 
     return np.array(params_list).T
 
-def generate_power_spectra(params_list):
+def generate_power_spectra(params_list, var=7):
     power_spectra = []
     for params in params_list:
         h, Omega_b, Omega_c, A_s, n_s, mnu, Omega_Lambda, redshift = params
@@ -34,7 +34,7 @@ def generate_power_spectra(params_list):
         pars.NumThreads = num_threads
 
         results = camb.get_results(pars)
-        kh, z, pk = results.get_matter_power_spectrum(minkh=1e-4, maxkh=10, npoints=200)
+        kh, z, pk = results.get_matter_power_spectrum(minkh=1e-4, maxkh=10, npoints=200, var1=var, var2=var)
 
         power_spectra.append((kh, pk[0]))
     return power_spectra

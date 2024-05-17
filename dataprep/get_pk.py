@@ -26,6 +26,19 @@ parameters = list(param_ranges.keys())
 n_samples = 1_000_000
 # Number of Modes
 R_values = np.logspace(-1, 1.5, 50)
+# Field to be used to get the Power-Spectrum
+fname = 'delta_tot' # delta_tot=CDM+baryons+massive neutrino density, 
+                    # delta_tot_de=CDM+baryons+massive neutrinos+ dark energy (numerator only) density
+                    # delta_nonu=CDM+baryons density
+
+########################################
+########## UNDER THE HOOD ##############
+########################################
+
+try:
+    var = {'delta_tot':7, 'delta_nonu':8, 'delta_tot_de':9}[fname]
+except:
+    raise RuntimeError(f"Density field {fname} not defined!")
 
 if n_samples % size:
 
@@ -52,7 +65,7 @@ for i, k in enumerate(parameters):
     training_parameters[k] = params_array[:, i]
 
 # Compute power spectra in each process
-power_spectra = generate_power_spectra(params_array)
+power_spectra = generate_power_spectra(params_array, var)
 sigma_R_array = get_sigma_r(power_spectra, R_values)
 
 # Gather power spectra back to the master process
