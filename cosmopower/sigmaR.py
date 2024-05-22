@@ -1,6 +1,7 @@
-from cctools import *
 import tensorflow as tf
+import numpy as np
 from cosmopower import cosmopower_NN as CPEmulator
+from cctools.cctools import get_sigma_r
 
 device = 'CPU'
 train = False
@@ -19,24 +20,21 @@ param_ranges = {
 }
 parameters = list(param_ranges.keys())
 
-# Number of samples
-n_samples = 1_000_000
-n_test    = 500
-# Bin of modes
-R_values = np.logspace(-1, 1.5, 50)
+n_test = 5
 
 if(train):
 
-    params_array = get_n_samples(param_ranges, n_samples)
+    data =  np.load("../dataprep/data.npz")
+    params_array = data['params']
+    params_array = params_array.reshape(params_array.shape[0]*params_array.shape[1], params_array.shape[2])
 
     training_parameters = {}
     for i, k in enumerate(parameters):
 
         training_parameters[k] = params_array[:, i]
 
-    power_spectra = generate_power_spectra_bacco(params_array)
-
-    sigma_R_array = get_sigma_r(power_spectra, R_values)
+    R_values = data['R_values']
+    sigma_R_array = data['sigma_R_array']
     # Initialize the emulator
     emulator = CPEmulator(parameters=parameters,
                           modes=R_values,
@@ -64,9 +62,13 @@ if(test):
 
     import matplotlib.pyplot as plt
 
-    test_array = get_n_samples(param_ranges, n_test)
+    data =  np.load("../dataprep/data.npz")
+    test_array = data['params'][:n_test]
+    test_array = test_array.reshape(test_array.shape[0]*test_array.shape[1], test_array.shape[2])
+    R_values = data['R_values']
+    sigma_R_array = data['sigma_R_array']
 
-    power_spectra = generate_power_spectra_bacco(test_array)
+    power_spectra = data['power_spectra'][:n_test]
     sigma_R = get_sigma_r(power_spectra, R_values)
 
     testing_parameters = {}
@@ -84,7 +86,7 @@ if(test):
 
     # Optionally, plot the predicted sigma(R) values
     for i, (pred, test) in enumerate(zip(predicted_sigma_R, sigma_R)):
-        plt.plot(R_values, pred/test-1, c=f"C{i}")
+        plt.plot(R_values, (pred/test-1)*100, c=f"C{i}")
         #plt.plot(R_values, test, c=f"C{i}")
         #plt.plot(R_values, pred, c=f"C{i}", ls=":")
 

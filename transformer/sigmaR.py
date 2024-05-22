@@ -9,6 +9,8 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 train = False
 test = True
 
+n_test = 5
+
 # Define the parameter ranges: [min, max]
 param_ranges = {
     'h': [0.6, 0.8],
@@ -21,12 +23,6 @@ param_ranges = {
     'redshift': [0.0, 3.0]   # Redshift
 }
 parameters = list(param_ranges.keys())
-
-# Number of samples
-n_samples = 100
-n_test = 5
-# Bin of modes
-R_values = np.logspace(-1, 1.5, 50)
 
 class SigmaDataset(Dataset):
     def __init__(self, params_array, sigma_R_array):
@@ -53,10 +49,12 @@ class TransformerModel(nn.Module):
         return x
 
 if train:
-    params_array = get_n_samples(param_ranges, n_samples)
 
-    power_spectra = generate_power_spectra(params_array)
-    sigma_R_array = get_sigma_r(power_spectra, R_values)
+    data =  np.load("../dataprep/data.npz")
+    params_array = data['params']
+    params_array = params_array.reshape(params_array.shape[0]*params_array.shape[1], params_array.shape[2])
+    R_values = data['R_values']
+    sigma_R_array = data['sigma_R_array']
 
     dataset = SigmaDataset(params_array, sigma_R_array)
     dataloader = DataLoader(dataset, batch_size=1024, shuffle=True)
@@ -79,9 +77,14 @@ if train:
     torch.save(model.state_dict(), 'transformer_sigmaR.pth')
 
 if test:
-    test_array = get_n_samples(param_ranges, n_test)
 
-    power_spectra = generate_power_spectra(test_array)
+    data =  np.load("../dataprep/data.npz")
+    test_array = data['params'][:n_test]
+    test_array = test_array.reshape(test_array.shape[0]*test_array.shape[1], test_array.shape[2])
+    R_values = data['R_values']
+    sigma_R_array = data['sigma_R_array']
+
+    power_spectra = data['power_spectra'][:n_test]
     sigma_R = get_sigma_r(power_spectra, R_values)
 
     model = TransformerModel(input_dim=len(parameters), output_dim=len(R_values)).to(device)
