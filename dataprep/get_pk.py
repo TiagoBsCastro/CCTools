@@ -76,6 +76,6 @@ if rank == 0:
     # Flatten the list of gathered power spectra
     all_power_spectra = np.array([item for sublist in gathered_power_spectra for item in sublist])
     all_sigma_R_array = np.array([item for sublist in gathered_sigma_R_array for item in sublist])
-    np.savez("data.npz", sigma_R_array=all_sigma_R_array, power_spectra=all_power_spectra)
+    np.savez("data_"+fname+".npz", sigma_R_array=all_sigma_R_array, power_spectra=all_power_spectra)
 else:
     pass
