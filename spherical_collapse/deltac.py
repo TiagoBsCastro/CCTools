@@ -1,0 +1,93 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import numdifftools as nd
+from astropy.cosmology import Flatw0waCDM
+from scipy.integrate import solve_ivp
+from scipy.optimize import fsolve, minimize
+from deltacNL import get_ics
+
+####################### input ##########################
+
+a_end = 1.0
+cosmo = Flatw0waCDM(Om0=1.0, H0=100.0, w0=-1, wa=0, Tcmb0=0)
+
+# Techinical parameters
+a_start = 1e-5 * a_end
+atol    = 1e-8
+rtol    = atol*100
+delta0  = 1e-5 # First value for the bissection root finder
+delta2  = 1e-1 # Second value for the bissection root finder
+
+############# Auxiliary solutions @ EdS ################
+
+eds_sol = {
+        'delta_ta' : 3/5 * (3*np.pi/4)**(2/3),
+        'delta_c'  : 3/20 * (12*np.pi)**(2/3),
+        'delta_v'  : 3/20 * (6 + 9*np.pi)**(2/3),
+        'DeltaVc'  : 18*np.pi**2,
+        'DeltaVv'  : 18*np.pi**2 * ( 3/4 + 1/2/np.pi )**2
+        }
+
+################ Auxiliary functions ###################
+
+E = lambda a: cosmo.efunc(1/a-1)
+E_prime = nd.Derivative(E, n=1, step=atol, order=5)
+
+def get_DeltaV (cosmo, nlsol, ac, atol=atol):
+
+    rinv = lambda a: ( np.abs(1+nlsol.sol(a)[0]) )**(1/3) / a
+    eds_guess = ac / (2**(2/3))
+    minsol = minimize(rinv, eds_guess, tol=atol, bounds=[(.1*eds_guess, 0.99*ac)])
+    amax = minsol.x[0]
+    rmax = 1/minsol.fun
+    Dta  = nlsol.sol(amax)[0] + 1
+    def yvir (a):
+
+        etat = 2/Dta * cosmo.Ode(1/amax-1)/cosmo.Om(1/amax-1)
+        etav = 2/Dta * (amax/a) ** 3 * cosmo.Ode(1/a-1)/cosmo.Om(1/a-1)
+        return (1 - etav/2)/(2+etat-3/2*etav)
+
+    # DeltaV @ collapse
+    DeltaVc = Dta * (a[-1]/amax/yvir(a[-1]))**3
+
+    # Solving for DeltaV @ virialization
+    av = fsolve( lambda _: _/amax * (Dta/(1+nlsol.sol(_)[0]))**(1/3) - yvir(_), (amax+a[-1])/2)[0]
+    DeltaVv = Dta * (av/amax/yvir(av))**3
+    
+    return DeltaVc, DeltaVv, av, amax
+
+# Define the system of ODEs for equation (19)
+def odes(a, y):
+    delta, theta = y
+    d_delta = theta
+    d_theta = - (3/a + E_prime(a)/E(a)) * theta + (3/2) * (cosmo.Om0 / (a**5 * E(a)**2)) * delta
+    return [d_delta, d_theta]
+
+############### Initial conditions #####################
+
+delta0, (nlsol, theta0) = get_ics (1e-5, 1e-1, cosmo, a_start=a_start, a_end=a_end, atol=atol, rtol=rtol, return_solution=True, dense_output=True)   # small initial perturbation
+y0 = [delta0, theta0]
+
+################## Solve the ODE #######################
+
+sol = solve_ivp(odes, (a_start, a_end), y0, method='RK45', atol=atol, rtol=rtol, dense_output=True)
+
+# Extract the solution
+delta_sol = sol.sol
+
+# Plotting the solution
+a = np.geomspace(a_start, a_end, 1000)
+plt.loglog(a, delta_sol(a)[0])
+plt.loglog(a, nlsol.sol(a)[0])
+plt.xlabel('Scale factor a')
+plt.ylabel('Density perturbation δ')
+plt.title('Evolution of density perturbation δ')
+plt.grid(True)
+plt.ylim(a_start, 1e3)
+plt.show()
+
+# Delta Virial
+DeltaVc, DeltaVv, av, amax = get_DeltaV (cosmo, nlsol, a_end, atol=atol)
+
+print(delta_sol(amax)[0]/eds_sol['delta_ta'], delta_sol(av)[0]/eds_sol['delta_v'], 
+      delta_sol(a_end)[0]/eds_sol['delta_c'], DeltaVv/eds_sol['DeltaVv'], DeltaVc/eds_sol['DeltaVc'])
