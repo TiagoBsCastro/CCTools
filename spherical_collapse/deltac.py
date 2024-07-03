@@ -10,6 +10,8 @@ from deltacNL import get_ics
 
 ####################### input ##########################
 
+print(sys.argv)
+
 Om0   = float(sys.argv[1])
 Ob0   = 0 if Om0 == 1 else float(sys.argv[2])
 m_nu  = 0 if Om0 == 1 else float(sys.argv[3])
