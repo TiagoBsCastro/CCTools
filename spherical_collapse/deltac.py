@@ -33,8 +33,8 @@ cosmo = Flatw0waCDM(H0=H0, Om0=Om0, m_nu=[m_nu/3*u.eV]*3, Ob0=Ob0, w0=w0, wa=wa,
 # Techinical parameters
 a_sup     = 1.0
 a_inf     = 0.1
-N_a       = 20
-atol      = 1e-8
+N_a       = 2
+atol      = 1e-9
 rtol      = atol*100
 delta_inf = 1e-5 # First value for the bissection root finder
 delta_sup = 1e-1 # Second value for the bissection root finder
@@ -124,4 +124,4 @@ def main(plot=False):
 
     np.savetxt(fout+".txt", results)
 
-main()
+main(plot=True)
