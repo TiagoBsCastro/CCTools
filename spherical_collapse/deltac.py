@@ -10,8 +10,6 @@ from deltacNL import get_ics
 
 ####################### input ##########################
 
-print(sys.argv)
-
 Om0   = float(sys.argv[1])
 Ob0   = 0 if Om0 == 1 else float(sys.argv[2])
 m_nu  = 0 if Om0 == 1 else float(sys.argv[3])
@@ -33,14 +31,16 @@ if m_nu > 1e-4:
 cosmo = Flatw0waCDM(H0=H0, Om0=Om0, m_nu=[m_nu/3*u.eV]*3, Ob0=Ob0, w0=w0, wa=wa, Tcmb0=Tcmb0*u.K, Neff=Neff)
 
 # Techinical parameters
-a_sup     = 1.0
-a_inf     = 0.1
-N_a       = 2
-atol      = 1e-9
-rtol      = atol*100
-delta_inf = 1e-5 # First value for the bissection root finder
-delta_sup = 1e-1 # Second value for the bissection root finder
-
+a_start_factor = 1e-6
+a_sup          = 1.0
+a_inf          = 0.1
+N_a            = 20
+atol           = 1e-9
+rtol           = atol*100
+delta_inf      = 1e-6 # First value for the bissection root finder
+delta_sup      = 1e-1 # Second value for the bissection root finder
+method_linear  = 'DOP853' 
+method_nl      = 'BDF' 
 ############# Auxiliary solutions @ EdS ################
 
 eds_sol = {
@@ -54,7 +54,7 @@ eds_sol = {
 ################ Auxiliary functions ###################
 
 E = lambda a: cosmo.efunc(1/a-1)
-E_prime = nd.Derivative(E, n=1, step=atol, order=5)
+E_prime = nd.Derivative(E, n=1, step=atol, order=10)
 
 def get_DeltaV (cosmo, nlsol, ac, atol=atol):
 
@@ -92,17 +92,17 @@ def main(plot=False):
 
     for a_end in np.linspace(a_inf, a_sup, N_a):
 
-        a_start = 1e-5 * a_end
+        a_start = a_start_factor * a_end
 
         ############### Initial conditions #####################
 
-        delta0, (nlsol, theta0) = get_ics (delta_inf, delta_sup, cosmo, a_start=a_start, a_end=a_end, 
-                                           atol=atol, rtol=rtol, return_solution=True, dense_output=True)   # small initial perturbation
-        y0 = [delta0, theta0]
+        delta0, nlsol = get_ics (delta_inf, delta_sup, cosmo, a_start=a_start, a_end=a_end, 
+                                 atol=atol, rtol=rtol, return_solution=True, dense_output=True, method=method_nl)   # small initial perturbation
+        y0 = [delta0, nlsol.sol(a_start)[1]]
 
         ################## Solve the ODE #######################
 
-        sol = solve_ivp(odes, (a_start, a_end), y0, method='RK45', atol=atol, rtol=rtol, dense_output=True)
+        sol = solve_ivp(odes, (a_start, a_end), y0, method=method_linear, atol=atol, rtol=rtol, dense_output=True)
 
         # Extract the solution
         delta_sol = sol.sol
@@ -122,7 +122,7 @@ def main(plot=False):
         # Delta Virial
         DeltaVc, DeltaVv, av, amax = get_DeltaV (cosmo, nlsol, a_end, atol=atol)
 
-        results += [[a_end, amax, av, delta_sol(amax)[0], delta_sol(av)[0], delta_sol(a_end)[0], DeltaVv, DeltaVc]]
+        results += [[a_end, amax, av, delta_sol(amax)[0], delta_sol(av)[0], delta_sol(a_end)[0], DeltaVv, DeltaVc, nlsol.sol(a_end)[0]]]
 
     np.savetxt(fout+".txt", results)
 
