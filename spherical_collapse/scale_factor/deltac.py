@@ -6,41 +6,68 @@ import astropy.units as u
 from astropy.cosmology import Flatw0waCDM
 from scipy.integrate import solve_ivp
 from scipy.optimize import fsolve, minimize
+from scipy.interpolate import CubicSpline
 from deltacNL import get_ics
 
 ####################### input ##########################
 
-Om0   = float(sys.argv[1])
-Ob0   = 0 if Om0 == 1 else float(sys.argv[2])
-m_nu  = 0 if Om0 == 1 else float(sys.argv[3])
-H0    = sys.argv[4] 
-ns    = sys.argv[5] # Doesnt matter
-As    = sys.argv[6] # Doesnt matter
-w0    = 0 if Om0 == 1 else float(sys.argv[7])
-wa    = 0 if Om0 == 1 else float(sys.argv[8])
-fout  = sys.argv[9]
+if len(sys.argv) == 3:
 
-## Other things to set 
-Tcmb0 = 0 if Om0 == 1 else 2.7255
-Neff  = 0 if Om0 == 1 else 3.046
+    class Cosmology:
+        def __init__ (self, bkgfile):
 
-# on concept I considered Om0 to contain neutrinos
-if m_nu > 1e-4:
-    aux = Flatw0waCDM(H0=H0, Om0=Om0, m_nu=[m_nu/3*u.eV]*3, Ob0=Ob0, w0=w0, wa=wa, Tcmb0=Tcmb0*u.K, Neff=Neff)
-    Om0 = Om0 - aux.Onu0
-cosmo = Flatw0waCDM(H0=H0, Om0=Om0, m_nu=[m_nu/3*u.eV]*3, Ob0=Ob0, w0=w0, wa=wa, Tcmb0=Tcmb0*u.K, Neff=Neff)
+            bkg = np.loadtxt(bkgfile)
+            self.z = bkg[::-1, 0]
+            self.ez = bkg[::-1, 3]
+            self.ez /= self.ez[0]
+            # Redshift derivative
+            self.efunc = CubicSpline(self.z, self.ez)
+            self.defunc = self.efunc.derivative(1)
+            # Om and Ode
+            Om  = (bkg[::-1, 10]+bkg[::-1, 9])/bkg[::-1, 14]
+            Ode = bkg[::-1, 11]/bkg[::-1, 14]
+            self.Om  = CubicSpline(self.z, Om)
+            self.Ode = CubicSpline(self.z, Ode)
+            self.Om0 = self.Om(0)
+            self.Ode0 = self.Ode(0) 
+
+    cosmo = Cosmology(sys.argv[1])
+    fout = sys.argv[2]
+
+else:
+
+    Om0   = float(sys.argv[1])
+    Ob0   = 0 if Om0 == 1 else float(sys.argv[2])
+    m_nu  = 0 if Om0 == 1 else float(sys.argv[3])
+    H0    = sys.argv[4] 
+    ns    = sys.argv[5] # Doesnt matter
+    As    = sys.argv[6] # Doesnt matter
+    w0    = 0 if Om0 == 1 else float(sys.argv[7])
+    wa    = 0 if Om0 == 1 else float(sys.argv[8])
+    fout  = sys.argv[9]
+
+    ## Other things to set 
+    Tcmb0 = 0 if Om0 == 1 else 2.7255
+    Neff  = 0 if Om0 == 1 else 3.046
+
+    # on concept I considered Om0 to contain neutrinos
+    if m_nu > 1e-4:
+        aux = Flatw0waCDM(H0=H0, Om0=Om0, m_nu=[m_nu/3*u.eV]*3, Ob0=Ob0, w0=w0, wa=wa, Tcmb0=Tcmb0*u.K, Neff=Neff)
+        Om0 = Om0 - aux.Onu0
+    cosmo = Flatw0waCDM(H0=H0, Om0=Om0, m_nu=[m_nu/3*u.eV]*3, Ob0=Ob0, w0=w0, wa=wa, Tcmb0=Tcmb0*u.K, Neff=Neff)
 
 # Techinical parameters
-a_start_factor = 1e-6
+a_start_factor = 1e-10
+a_start_linear = 1e-10
 a_sup          = 1.0
-a_inf          = 0.1
+a_inf          = 1/6
 N_a            = 20
-atol           = 1e-9
+atol           = 1e-12
 rtol           = atol*100
 delta_inf      = 1e-6 # First value for the bissection root finder
-delta_sup      = 1e-1 # Second value for the bissection root finder
-method_linear  = 'DOP853' 
-method_nl      = 'BDF' 
+delta_sup      = 1e0  # Second value for the bissection root finder
+method_linear  = 'RK45' 
+method_nl      = 'RK45' 
 ############# Auxiliary solutions @ EdS ################
 
 eds_sol = {
@@ -54,7 +81,12 @@ eds_sol = {
 ################ Auxiliary functions ###################
 
 E = lambda a: cosmo.efunc(1/a-1)
-E_prime = nd.Derivative(E, n=1, step=atol, order=10)
+# Lets check if the derivative exists:
+try:
+    cosmo.defunc(0.5)
+    E_prime = lambda a: cosmo.defunc(1/a-1) * (-1/a**2)
+except:
+    E_prime = nd.Derivative(E, n=1, step=atol, order=10)
 
 def get_DeltaV (cosmo, nlsol, ac, atol=atol):
 
@@ -96,22 +128,25 @@ def main(plot=False):
 
         ############### Initial conditions #####################
 
-        delta0, nlsol = get_ics (delta_inf, delta_sup, cosmo, a_start=a_start, a_end=a_end, 
+        _, nlsol = get_ics (delta_inf, delta_sup, cosmo, a_start=a_start, a_end=a_end, 
                                  atol=atol, rtol=rtol, return_solution=True, dense_output=True, method=method_nl)   # small initial perturbation
-        y0 = [delta0, nlsol.sol(a_start)[1]]
+        
+        y0 = [nlsol.sol(a_start_linear)[0], nlsol.sol(a_start_linear)[1]]
 
         ################## Solve the ODE #######################
 
-        sol = solve_ivp(odes, (a_start, a_end), y0, method=method_linear, atol=atol, rtol=rtol, dense_output=True)
+        sol = solve_ivp(odes, (a_start_linear, a_end), y0, method=method_linear, atol=atol, rtol=rtol, dense_output=True)
 
         # Extract the solution
         delta_sol = sol.sol
 
         if plot:
             # Plotting the solution
-            a = np.geomspace(a_start, a_end, 1000)
+            a = np.geomspace(a_start_linear, a_end, 1000)
             plt.loglog(a, delta_sol(a)[0])
+            plt.loglog(a, delta_sol(a)[1])
             plt.loglog(a, nlsol.sol(a)[0])
+            plt.loglog(a, nlsol.sol(a)[1])
             plt.xlabel('Scale factor a')
             plt.ylabel('Density perturbation δ')
             plt.title('Evolution of density perturbation δ')
@@ -124,6 +159,9 @@ def main(plot=False):
 
         results += [[a_end, amax, av, delta_sol(amax)[0], delta_sol(av)[0], delta_sol(a_end)[0], DeltaVv, DeltaVc, nlsol.sol(a_end)[0]]]
 
+        a = np.geomspace(a_start_linear, a_end, 1000)
+        np.savez(f"spherical_colapse_solution_a={a_end:5.4f}", a=a, lin=delta_sol(a), nl=nlsol.sol(a))
+
     np.savetxt(fout+".txt", results)
 
-main(plot=True)
+main(plot=False)

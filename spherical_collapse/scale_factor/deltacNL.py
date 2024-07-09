@@ -7,7 +7,12 @@ def get_ics (x0, x2, cosmo, a_start=1e-3, a_end=1.0, atol=1e-8, rtol=1e-6, retur
 
     # Auxiliary functions
     E = lambda a: cosmo.efunc(1/a-1)
-    E_prime = nd.Derivative(E, n=1, step=atol, order=10)
+    # Lets check if the derivative exists:
+    try:
+        cosmo.defunc(0.5)
+        E_prime = lambda a: cosmo.defunc(1/a-1) * (-1/a**2)
+    except:
+        E_prime = nd.Derivative(E, n=1, step=atol, order=10)
 
     # Define the system of ODEs for equation (18)
     def odes(a, y):
